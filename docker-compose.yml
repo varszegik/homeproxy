@@ -1,0 +1,30 @@
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    container_name: homeproxy-caddy
+    restart: unless-stopped
+    network_mode: host          # binds :80 directly, reaches any LAN/host port
+    # --resume: reuse the last config the UI pushed, so proxying works even if the UI is down
+    command: caddy run --resume --config /etc/caddy/bootstrap.json
+    volumes:
+      - ./bootstrap.json:/etc/caddy/bootstrap.json:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  ui:
+    build: ./app
+    container_name: homeproxy-ui
+    restart: unless-stopped
+    network_mode: host          # UI on :8099, talks to Caddy admin on 127.0.0.1:2019
+    environment:
+      DOMAIN: ${DOMAIN:-home.arpa}
+      PROXY_PORT: ${PROXY_PORT:-80}
+      UI_PORT: ${UI_PORT:-8099}
+      DEFAULT_TARGET: ${DEFAULT_TARGET:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./data:/data
+
+volumes:
+  caddy_data:
+  caddy_config:

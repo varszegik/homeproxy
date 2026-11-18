@@ -1,0 +1,6 @@
+# Your local settings and routes
+.env
+data/
+
+__pycache__/
+*.pyc

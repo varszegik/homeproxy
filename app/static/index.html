@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>homeproxy</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --text: #1b1f24; --muted: #667085;
+    --border: #e3e6ea; --accent: #2f6fed; --accent-text: #fff;
+    --up: #1f9d55; --down: #d64545; --chip: #eef2f7; --danger: #c43c3c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --panel: #1a1e24; --text: #e6e8eb; --muted: #8b93a0;
+      --border: #2a3039; --accent: #5b8dff; --accent-text: #0b0e12;
+      --up: #3ccf7a; --down: #ff6b6b; --chip: #232934; --danger: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--muted); font-weight: 400; }
+  .caddy { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.up { background: var(--up); } .dot.down { background: var(--down); }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  form { margin: 24px 0; padding: 16px; display: grid; gap: 12px;
+         grid-template-columns: 1.3fr 1.3fr 0.7fr; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  input[type=text], input[type=number] {
+    font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .suffix { display: flex; align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  .suffix input { border: 0; background: transparent; }
+  .suffix span { color: var(--muted); padding-right: 10px; white-space: nowrap; }
+  .row { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .check { flex-direction: row; align-items: center; gap: 6px; font-size: 14px; color: var(--text); }
+  .spacer { flex: 1; }
+  button { font: inherit; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+           border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.link { border: 0; background: none; padding: 4px 6px; color: var(--muted); }
+  button.link:hover { color: var(--text); }
+  button.link.danger:hover { color: var(--danger); }
+  .error { grid-column: 1 / -1; color: var(--danger); font-size: 14px; margin: 0; }
+  .error:empty { display: none; }
+
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  li:first-child { border-top: 0; }
+  .name { font-weight: 600; text-decoration: none; color: var(--text); }
+  .name:hover { color: var(--accent); }
+  .meta { color: var(--muted); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .chip { font-size: 11px; background: var(--chip); color: var(--muted); padding: 1px 7px; border-radius: 99px; margin-left: 6px; }
+  .info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .empty { padding: 32px 16px; text-align: center; color: var(--muted); }
+
+  @media (max-width: 640px) {
+    form { grid-template-columns: 1fr 1fr; }
+    form label:first-child { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>homeproxy <span id="domain"></span></h1>
+    <div class="caddy"><span class="dot" id="caddy-dot"></span><span id="caddy-text">checking…</span></div>
+  </header>
+
+  <form class="panel" id="form" autocomplete="off">
+    <label>Name
+      <div class="suffix"><input type="text" id="name" required placeholder="grafana"><span id="suffix"></span></div>
+    </label>
+    <label>Target IP / host <input type="text" id="target" required></label>
+    <label>Port <input type="number" id="port" required min="1" max="65535" placeholder="3000"></label>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="https"> Backend uses HTTPS</label>
+      <label class="check" title="Bare IP and unknown names go here"><input type="checkbox" id="default"> Default site</label>
+      <span class="spacer"></span>
+      <button type="button" id="cancel" hidden>Cancel</button>
+      <button type="submit" class="primary" id="submit">Add service</button>
+    </div>
+    <p class="error" id="error"></p>
+  </form>
+
+  <div class="panel"><ul id="list"><li class="empty">Loading…</li></ul></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let state = { routes: [] }, editing = null;
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function api(method, path, body) {
+  const res = await fetch(path, { method, headers: {'Content-Type': 'application/json'},
+                                  body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+async function refresh() {
+  try { state = await api('GET', '/api/state'); } catch { return; }
+  $('domain').textContent = '*.' + state.domain;
+  $('suffix').textContent = '.' + state.domain;
+  if (!editing && !$('target').value) $('target').value = state.default_target;
+  $('caddy-dot').className = 'dot ' + (state.caddy ? 'up' : 'down');
+  $('caddy-text').textContent = state.caddy ? 'Caddy running' : 'Caddy unreachable';
+  render();
+}
+
+function render() {
+  if (!state.routes.length) {
+    $('list').innerHTML = '<li class="empty">No services yet. Add one above.</li>';
+    return;
+  }
+  const scheme = location.protocol === 'https:' ? 'https' : 'http';
+  $('list').innerHTML = state.routes.map(r => `
+    <li>
+      <span class="dot ${r.up ? 'up' : 'down'}" title="${r.up ? 'Backend reachable' : 'Backend not reachable'}"></span>
+      <div class="info">
+        <a class="name" href="${scheme}://${esc(r.name)}.${esc(state.domain)}/" target="_blank" rel="noopener">${esc(r.name)}.${esc(state.domain)}</a>
+        ${r.default ? '<span class="chip">default</span>' : ''}
+        <div class="meta">→ ${r.https ? 'https' : 'http'}://${esc(r.target)}:${r.port}</div>
+      </div>
+      <button class="link" data-edit="${esc(r.name)}">Edit</button>
+      <button class="link danger" data-del="${esc(r.name)}">Delete</button>
+    </li>`).join('');
+}
+
+function resetForm() {
+  editing = null;
+  $('form').reset();
+  $('target').value = state.default_target || '';
+  $('submit').textContent = 'Add service';
+  $('cancel').hidden = true;
+  $('error').textContent = '';
+}
+
+$('list').addEventListener('click', async e => {
+  const edit = e.target.dataset.edit, del = e.target.dataset.del;
+  if (edit) {
+    const r = state.routes.find(r => r.name === edit);
+    editing = r.name;
+    $('name').value = r.name; $('target').value = r.target; $('port').value = r.port;
+    $('https').checked = r.https; $('default').checked = r.default;
+    $('submit').textContent = 'Save changes';
+    $('cancel').hidden = false;
+    $('error').textContent = '';
+    $('name').focus();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (del && confirm(`Remove ${del}.${state.domain}?`)) {
+    try { await api('DELETE', '/api/routes/' + encodeURIComponent(del)); if (editing === del) resetForm(); }
+    catch (err) { alert(err.message); }
+    refresh();
+  }
+});
+
+$('cancel').addEventListener('click', resetForm);
+
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = { name: $('name').value.trim().toLowerCase(), target: $('target').value.trim(),
+                 port: Number($('port').value), https: $('https').checked, default: $('default').checked };
+  try {
+    await api('POST', '/api/routes' + (editing ? '/' + encodeURIComponent(editing) : ''), body);
+    resetForm();
+    refresh();
+  } catch (err) { $('error').textContent = err.message; }
+});
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
